@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Dynamic 3D Shape Dance with Secret Code</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: #000;
+            color: #fff;
+            font-family: Arial, sans-serif;
+            touch-action: manipulation;
+        }
+        canvas {
+            max-width: 100%;
+            max-height: 70vh;
+        }
+        .controls, .output {
+            width: 100%;
+            padding: 10px;
+            box-sizing: border-box;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        input, button, textarea {
+            margin: 5px;
+            padding: 10px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            cursor: pointer;
+        }
+        textarea {
+            width: 90%;
+            height: 100px;
+            resize: vertical;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="controls">
+        <input type="number" id="bpm" value="128" min="60" max="180">
+        <button id="generate">Generate</button>
+        <button id="download">Download Video</button>
+    </div>
+    <div class="output">
+        <textarea id="caption" readonly></textarea>
+    </div>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 1080;
+        canvas.height = 1920;
+
+        const particles = [];
+        let colorPalette = [];
+        let bpm = 128;
+        let beatInterval;
+        let lastBeatTime = 0;
+        let startTime;
+        const loopDuration = 15000; // 15 seconds
+
+        class Background3DShape {
+            constructor() {
+                this.vertices = [];
+                this.edges = [];
+                this.rotationX = 0;
+                this.rotationY = 0;
+                this.rotationZ = 0;
+                this.generateShape();
+            }
+
+            generateShape() {
+                const numVertices = Math.floor(Math.random() * 6) + 4;
+                for (let i = 0; i < numVertices; i++) {
+                    this.vertices.push({
+                        x: (Math.random() - 0.5) * 400,
+                        y: (Math.random() - 0.5) * 400,
+                        z: (Math.random() - 0.5) * 400
+                    });
+                }
+
+                for (let i = 0; i < numVertices; i++) {
+                    for (let j = i + 1; j < numVertices; j++) {
+                        if (Math.random() < 0.5) {
+                            this.edges.push([i, j]);
+                        }
+                    }
+                }
+            }
+
+            update(progress) {
+                this.rotationX = progress * Math.PI * 2;
+                this.rotationY = progress * Math.PI * 3;
+                this.rotationZ = progress * Math.PI * 4;
+            }
+
+            draw(ctx) {
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                ctx.lineWidth = 2;
+
+                this.edges.forEach(edge => {
+                    const v1 = this.rotateVertex(this.vertices[edge[0]]);
+                    const v2 = this.rotateVertex(this.vertices[edge[1]]);
+
+                    ctx.beginPath();
+                    ctx.moveTo(centerX + v1.x, centerY + v1.y);
+                    ctx.lineTo(centerX + v2.x, centerY + v2.y);
+                    ctx.stroke();
+                });
+            }
+
+            rotateVertex(v) {
+                let {x, y, z} = v;
+
+                let temp = y;
+                y = y * Math.cos(this.rotationX) - z * Math.sin(this.rotationX);
+                z = temp * Math.sin(this.rotationX) + z * Math.cos(this.rotationX);
+
+                temp = x;
+                x = x * Math.cos(this.rotationY) + z * Math.sin(this.rotationY);
+                z = -temp * Math.sin(this.rotationY) + z * Math.cos(this.rotationY);
+
+                temp = x;
+                x = x * Math.cos(this.rotationZ) - y * Math.sin(this.rotationZ);
+                y = temp * Math.sin(this.rotationZ) + y * Math.cos(this.rotationZ);
+
+                return {x, y, z};
+            }
+        }
+
+        let background3DShape = new Background3DShape();
+
+        function hslToHex(h, s, l) {
+            l /= 100;
+            const a = s * Math.min(l, 1 - l) / 100;
+            const f = n => {
+                const k = (n + h / 30) % 12;
+                const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+                return Math.round(255 * color).toString(16).padStart(2, '0');
+            };
+            return `#${f(0)}${f(8)}${f(4)}`;
+        }
+
+        function generateColorPalette() {
+            const palette = [];
+            for (let i = 0; i < 10; i++) {
+                const hue = Math.random() * 360;
+                const saturation = 70 + Math.random() * 30;
+                const lightness = 40 + Math.random() * 20;
+                palette.push(hslToHex(hue, saturation, lightness));
+            }
+            return palette;
+        }
+
+        class Particle {
+            constructor(index) {
+                this.index = index;
+                this.init();
+            }
+
+            init() {
+                this.color = colorPalette[Math.floor(Math.random() * colorPalette.length)];
+                this.shape = ['circle', 'square', 'triangle', 'star', 'polygon', 'heart'][Math.floor(Math.random() * 6)];
+                this.baseSize = Math.random() * 30 + 10;
+                this.angle = Math.random() * Math.PI * 2;
+                this.radius = Math.random() * 400 + 50;
+                this.yOffset = Math.random() * canvas.height;
+                this.zOffset = Math.random() * 1000 - 500;
+                this.speed = Math.random() * 0.0005 + 0.0002;
+                this.rotationX = Math.random() * Math.PI * 2;
+                this.rotationY = Math.random() * Math.PI * 2;
+                this.rotationZ = Math.random() * Math.PI * 2;
+                this.rotationSpeedX = (Math.random() - 0.5) * 0.002;
+                this.rotationSpeedY = (Math.random() - 0.5) * 0.002;
+                this.rotationSpeedZ = (Math.random() - 0.5) * 0.002;
+            }
+
+            update(progress, beatProgress) {
+                this.angle += this.speed;
+                this.rotationX += this.rotationSpeedX;
+                this.rotationY += this.rotationSpeedY;
+                this.rotationZ += this.rotationSpeedZ;
+
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+
+                const x = Math.cos(this.angle) * this.radius;
+                const z = Math.sin(this.angle) * this.radius + this.zOffset;
+
+                const perspective = 1000 / (1000 + z);
+                this.size = this.baseSize * perspective;
+                this.x = centerX + x * perspective;
+                this.y = centerY + (Math.sin(progress * Math.PI * 2 + this.yOffset) * 200 + this.yOffset - canvas.height / 2) * perspective;
+
+                this.size *= 1 + Math.sin(beatProgress * Math.PI * 2) * 0.1;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotationZ);
+                ctx.scale(Math.cos(this.rotationX), Math.cos(this.rotationY));
+                ctx.fillStyle = this.color;
+                
+                switch(this.shape) {
+                    case 'circle':
+                        ctx.beginPath();
+                        ctx.arc(0, 0, this.size / 2, 0, Math.PI * 2);
+                        ctx.fill();
+                        break;
+                    case 'square':
+                        ctx.fillRect(-this.size / 2, -this.size / 2, this.size, this.size);
+                        break;
+                    case 'triangle':
+                        ctx.beginPath();
+                        ctx.moveTo(0, -this.size / 2);
+                        ctx.lineTo(-this.size / 2, this.size / 2);
+                        ctx.lineTo(this.size / 2, this.size / 2);
+                        ctx.closePath();
+                        ctx.fill();
+                        break;
+                    case 'star':
+                        let spikes = 5;
+                        let rot = Math.PI / 2 * 3;
+                        let step = Math.PI / spikes;
+                        ctx.beginPath();
+                        for (let i = 0; i < spikes; i++) {
+                            let x = Math.cos(rot) * this.size / 2;
+                            let y = Math.sin(rot) * this.size / 2;
+                            ctx.lineTo(x, y);
+                            rot += step;
+                            x = Math.cos(rot) * this.size / 4;
+                            y = Math.sin(rot) * this.size / 4;
+                            ctx.lineTo(x, y);
+                            rot += step;
+                        }
+                        ctx.closePath();
+                        ctx.fill();
+                        break;
+                    case 'polygon':
+                        let sides = 6;
+                        ctx.beginPath();
+                        for (let i = 0; i < sides; i++) {
+                            let angle = (i / sides) * Math.PI * 2;
+                            let x = Math.cos(angle) * this.size / 2;
+                            let y = Math.sin(angle) * this.size / 2;
+                            if (i === 0) ctx.moveTo(x, y);
+                            else ctx.lineTo(x, y);
+                        }
+                        ctx.closePath();
+                        ctx.fill();
+                        break;
+                    case 'heart':
+                        ctx.beginPath();
+                        ctx.moveTo(0, -this.size / 4);
+                        ctx.bezierCurveTo(this.size / 4, -this.size / 2, this.size / 2, -this.size / 4, 0, this.size / 2);
+                        ctx.bezierCurveTo(-this.size / 2, -this.size / 4, -this.size / 4, -this.size / 2, 0, -this.size / 4);
+                        ctx.fill();
+                        break;
+                }
+                
+                ctx.restore();
+            }
+        }
+
+        function initParticles() {
+            for (let i = 0; i < 150; i++) {
+                particles.push(new Particle(i));
+            }
+        }
+
+        function animate(time) {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const currentTime = time - startTime;
+            const loopProgress = (currentTime % loopDuration) / loopDuration;
+            const beatProgress = (currentTime - lastBeatTime) / beatInterval;
+
+            if (beatProgress >= 1) {
+                lastBeatTime = currentTime;
+            }
+
+            background3DShape.update(loopProgress);
+            background3DShape.draw(ctx);
+
+            particles.forEach(particle => {
+                particle.update(loopProgress, beatProgress);
+                particle.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        function generateSecretCode() {
+            const date = new Date();
+            const seed = date.getFullYear() * 10000 + (date.getMonth() + 1) * 100 + date.getDate();
+            const videoSeed = background3DShape.vertices.length * 1000 + particles.length + Math.floor(bpm);
+            
+            let code = (seed * videoSeed) % 1000000;
+            return code.toString().padStart(6, '0');
+        }
+
+        function generateCaption() {
+            const hashtags = [
+                "#GenerativeArt", "#DigitalArt", "#AbstractAnimation",
+                "#CreativeCoding", "#CodeArt", "#GenerativeDesign",
+                "#VisualArt", "#NewMediaArt", "#ComputerArt",
+                "#AlgorithmicArt", "#ProcessingArt", "#CreativeTech",
+                "#InteractiveArt", "#DigitalCreation", "#ArtTech"
+            ];
+
+            const date = new Date().toISOString().split('T')[0];
+            const secretCode = generateSecretCode();
+            const selectedHashtags = hashtags.sort(() => 0.5 - Math.random()).slice(0, 15).join(' ');
+
+            return `${date}\n\nSecret Code: ${secretCode}\n\n${selectedHashtags}`;
+        }
+
+        document.getElementById('generate').addEventListener('click', () => {
+            bpm = parseInt(document.getElementById('bpm').value) || 128;
+            beatInterval = 60000 / bpm;
+            lastBeatTime = performance.now();
+
+            colorPalette = generateColorPalette();
+            background3DShape = new Background3DShape();
+
+            particles.forEach(particle => particle.init());
+
+            startTime = performance.now();
+            animate(startTime);
+
+            // Generate and display caption
+            const caption = generateCaption();
+            document.getElementById('caption').value = caption;
+        });
+
+        document.getElementById('download').addEventListener('click', () => {
+            alert("Video download functionality would be implemented here. It typically requires server-side processing to create and serve the video file.");
+        });
+
+        // Initial setup
+        colorPalette = generateColorPalette();
+        initParticles();
+        beatInterval = 60000 / bpm;
+        lastBeatTime = performance.now();
+        startTime = performance.now();
+        animate(startTime);
+        document.getElementById('caption').value = generateCaption();
+    </script>
+</body>
+</html>
