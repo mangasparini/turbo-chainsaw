@@ -59,6 +59,7 @@
     <div class="output">
         <textarea id="caption" readonly></textarea>
     </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ccapture.js/1.1.1/CCapture.all.min.js"></script>
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
@@ -306,6 +307,10 @@
                 particle.draw();
             });
 
+            if (capturer) {
+                capturer.capture(canvas);
+            }
+
             requestAnimationFrame(animate);
         }
 
@@ -334,6 +339,8 @@
             return `${date}\n\nSecret Code: ${secretCode}\n\n${selectedHashtags}`;
         }
 
+        let capturer;
+
         document.getElementById('generate').addEventListener('click', () => {
             bpm = parseInt(document.getElementById('bpm').value) || 128;
             beatInterval = 60000 / bpm;
@@ -353,7 +360,13 @@
         });
 
         document.getElementById('download').addEventListener('click', () => {
-            alert("Video download functionality would be implemented here. It typically requires server-side processing to create and serve the video file.");
+            capturer = new CCapture({ format: 'webm', framerate: 60, name: '3d_shape_dance', quality: 100 });
+            capturer.start();
+            setTimeout(() => {
+                capturer.stop();
+                capturer.save();
+                capturer = null;
+            }, loopDuration);
         });
 
         // Initial setup
@@ -367,3 +380,4 @@
     </script>
 </body>
 </html>
+
